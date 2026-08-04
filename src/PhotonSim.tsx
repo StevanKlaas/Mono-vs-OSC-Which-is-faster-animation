@@ -47,6 +47,13 @@ const bandCol = (M, i) => M.bands[i].color;
 const CONT_COL = ["#FF4D5E", "#3FD98A", "#4D9BFF"];
 const CONT_FRAC = 0.7; // emission lines are a minority of what arrives
 
+/* why each line fares as it does on a Bayer array */
+const LINE_WHY = {
+  "Hα": "Red pixels only, so three in four are blind to it — always a flat no, never a partial one. Mono loses it solely while another filter is on the wheel.",
+  "OIII": "Green transmits it fully, red not at all, and blue about six times in ten — 500.7 nm sits where the blue dye is already closing. That gives 0.5 + 0.25 × 0.6 = 0.65 of the array, beating mono's 50% duty cycle. The only line a colour sensor wins.",
+  "SII": "Red pixels only, exactly like Hα — and indistinguishable from it there. Only the filter in front can separate the two.",
+};
+
 const BLOCK = 100;
 const SLATE_H = 44;
 const NOMINAL_BUDGET = 1100;
@@ -159,7 +166,7 @@ function syncSlate(slate, q, target, cap) {
   while (slate.length > t && steps-- > 0) slate.pop();
 }
 
-function freshSim(nb) {
+function freshSim(nb, ol = 1) {
   return {
     photons: [],
     mono: [0, 0, 0, 0], osc: [0, 0, 0, 0],
@@ -170,6 +177,13 @@ function freshSim(nb) {
     monoFlash: [0, 0, 0, 0], oscFlash: [0, 0, 0, 0],
     monoTot: 0, oscTot: 0, delivered: 0,
     monoLost: 0, oscLost: 0, oscSlabLost: 0, contDelivered: 0,
+    monoLostBand: new Array(nb).fill(0),
+    oscSlabBand: new Array(nb).fill(0),
+    /* band x mounted filter, so a loss can name the filter that caused it */
+    monoLostBy: Array.from({ length: nb }, () => new Array(nb).fill(0)),
+    oscSlabBy: Array.from({ length: nb }, () => new Array(ol).fill(0)),
+    oscDyeBand: new Array(nb).fill(0),  // dye has no transmission there
+    oscPartBand: new Array(nb).fill(0), // dye transmits, but only partly
     pos: 0, acc: 0, done: false, lastF: "?", pulse: 0,
   };
 }
@@ -229,11 +243,15 @@ export default function PhotonAccumulation() {
   const [speed, setSpeed] = useState(1);
   const [playing, setPlaying] = useState(true);
   const [docs, setDocs] = useState(false);
+  const [caveats, setCaveats] = useState(false);
   const hubRef = useRef(false);
   const [ui, setUi] = useState({
     delivered: 0, monoTot: 0, oscTot: 0, monoAll: 0,
     monoBand: [0, 0, 0], oscBand: [0, 0, 0],
     monoLost: 0, oscLost: 0, oscSlabLost: 0, contDelivered: 0,
+    monoLostBand: [0, 0, 0], oscSlabBand: [0, 0, 0],
+    oscDyeBand: [0, 0, 0], oscPartBand: [0, 0, 0],
+    monoLostBy: [], oscSlabBy: [],
     pos: 0, done: false, filter: null, oscFilter: null,
   });
 
@@ -247,12 +265,18 @@ export default function PhotonAccumulation() {
   }, []);
 
   const reset = useCallback((m) => {
-    const nb = MODES[m || modeRef.current].bands.length;
-    sim.current = freshSim(nb);
+    const MM = MODES[m || modeRef.current];
+    const nb = MM.bands.length, ol = MM.oscSeq ? MM.oscSeq.length : 1;
+    sim.current = freshSim(nb, ol);
     setUi({
       delivered: 0, monoTot: 0, oscTot: 0, monoAll: 0,
       monoBand: new Array(nb).fill(0), oscBand: new Array(nb).fill(0),
       monoLost: 0, oscLost: 0, oscSlabLost: 0, contDelivered: 0,
+      monoLostBand: new Array(nb).fill(0),
+      oscSlabBand: new Array(nb).fill(0),
+      oscDyeBand: new Array(nb).fill(0), oscPartBand: new Array(nb).fill(0),
+      monoLostBy: Array.from({ length: nb }, () => new Array(nb).fill(0)),
+      oscSlabBy: Array.from({ length: nb }, () => new Array(ol).fill(0)),
       pos: 0, done: false, filter: null, oscFilter: null,
     });
   }, []);
@@ -276,16 +300,23 @@ export default function PhotonAccumulation() {
       }
       const band = (Math.random() * nb) | 0;
       const bc = bandCol(M, band);
+      const oi = idxAt(M.oscSeq, s.pos - 1, budgetOf(m));
       if (mf === null) { s.mono[px]++; s.monoAll++; s.monoTot++; }
       else if (mf === band) { s.mono[px]++; s.monoBand[band]++; s.monoTot++; }
-      else { pushQ(s.monoQ, bc); s.monoLost++; }
+      else {
+        pushQ(s.monoQ, bc); s.monoLost++; s.monoLostBand[band]++;
+        s.monoLostBy[band][mf]++;
+      }
 
       const passes = of === null || of.includes(band);
-      if (passes && Math.random() < M.resp[DYE[px]][band]) {
+      const resp = M.resp[DYE[px]][band];
+      if (passes && Math.random() < resp) {
         s.osc[px]++; s.oscBand[band]++; s.oscTot++;
       } else {
         pushQ(s.oscQ, bc); s.oscLost++;
-        if (!passes) s.oscSlabLost++;
+        if (!passes) { s.oscSlabLost++; s.oscSlabBand[band]++; s.oscSlabBy[band][oi]++; }
+        else if (resp === 0) s.oscDyeBand[band]++;
+        else s.oscPartBand[band]++;
       }
     }
     if (M.monoSeq && s.pos >= budgetOf(m)) s.done = true;
@@ -329,7 +360,8 @@ export default function PhotonAccumulation() {
             ? CONT_COL[(Math.random() * 3) | 0]
             : bandCol(M, band);
           const oPasses = !cont && (of === null || of.includes(band));
-          const oPixel = oPasses && Math.random() < M.resp[DYE[px]][band];
+          const oResp = cont ? 0 : M.resp[DYE[px]][band];
+          const oPixel = oPasses && Math.random() < oResp;
           if (cont) s.contDelivered++;
           for (const side of [0, 1]) {
             const base = side === 0 ? L.monoPX : L.oscPX;
@@ -341,7 +373,8 @@ export default function PhotonAccumulation() {
             const atSlab = cont ? true
               : side === 0 ? mf !== null && mf !== band : !oPasses;
             s.photons.push({
-              side, band, px, ok, atSlab, cont, col,
+              side, band, px, ok, atSlab, cont, col, resp: oResp,
+              mf, oi: idxAt(M.oscSeq, s.pos, budget),
               ax: a.x, ay: a.y, tx, ty, x: a.x, y: a.y,
               tStop: atSlab ? (L.filterY - a.y) / (ty - a.y) : 1,
               t: 0, dur: spd.flight, phase: 0,
@@ -372,8 +405,21 @@ export default function PhotonAccumulation() {
               continue;
             }
             p.phase = 1;
-            if (p.side === 0) { pushQ(s.monoQ, p.col); s.monoLost++; }
-            else { pushQ(s.oscQ, p.col); s.oscLost++; if (p.atSlab) s.oscSlabLost++; }
+            if (p.side === 0) {
+              pushQ(s.monoQ, p.col); s.monoLost++;
+              if (!p.cont) {
+                s.monoLostBand[p.band]++;
+                if (p.mf !== null) s.monoLostBy[p.band][p.mf]++;
+              }
+            } else {
+              pushQ(s.oscQ, p.col); s.oscLost++;
+              if (p.atSlab) s.oscSlabLost++;
+              if (!p.cont) {
+                if (p.atSlab) { s.oscSlabBand[p.band]++; s.oscSlabBy[p.band][p.oi]++; }
+                else if (p.resp === 0) s.oscDyeBand[p.band]++;
+                else s.oscPartBand[p.band]++;
+              }
+            }
             const pile = p.side === 0 ? s.monoSlate : s.oscSlate;
             const dest = L.slateSlot(p.side === 0 ? L.monoPX : L.oscPX,
               Math.min(L.slateCap - 1, pile.length));
@@ -476,6 +522,11 @@ export default function PhotonAccumulation() {
           monoAll: s.monoAll, monoBand: [...s.monoBand], oscBand: [...s.oscBand],
           monoLost: s.monoLost, oscLost: s.oscLost, oscSlabLost: s.oscSlabLost,
           contDelivered: s.contDelivered,
+          monoLostBand: [...s.monoLostBand],
+          oscSlabBand: [...s.oscSlabBand],
+          oscDyeBand: [...s.oscDyeBand], oscPartBand: [...s.oscPartBand],
+          monoLostBy: s.monoLostBy.map((r) => [...r]),
+          oscSlabBy: s.oscSlabBy.map((r) => [...r]),
           pos: Math.min(s.pos, budget), done: s.done, filter: mf, oscFilter: of,
         });
       }
@@ -665,7 +716,7 @@ export default function PhotonAccumulation() {
               style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               How it works
             </button>
-            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.24</span>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.29</span>
           </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
@@ -746,15 +797,22 @@ export default function PhotonAccumulation() {
 
         {isNB && (
           <div style={{ marginTop: 10, border: `1px solid ${C.edge}`, borderRadius: 12, padding: "12px 14px", background: C.panel }}>
-            <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10, color: C.dim, letterSpacing: "0.09em", marginBottom: 10 }}>
-              PER-LINE ADVANTAGE — WHERE THE REAL STORY IS
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+              <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.dim, letterSpacing: "0.09em" }}>
+                PER-LINE ADVANTAGE — WHERE THE REAL STORY IS
+              </div>
+              <button onClick={() => setCaveats(true)}
+                style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(212,169,74,0.10)", border: "1px solid rgba(212,169,74,0.5)", color: C.gold, borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                <span style={{ fontSize: 13 }}>⚠</span> Read the reservations
+              </button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(238px, 1fr))", gap: 10 }}>
               {M.bands.map((b, i) => {
                 const mc = ui.monoBand[i] || 0, oc = ui.oscBand[i] || 0;
                 /* measured, like every other readout; the analytic value is
                    shown underneath as the figure it settles on */
                 const live = mc > 0 && oc > 0 ? mc / oc : 0;
+                const oLost = (ui.oscSlabBand[i] || 0) + (ui.oscDyeBand[i] || 0) + (ui.oscPartBand[i] || 0);
                 const monoWins = live >= 1;
                 const tgt = exp.oscBand[i] > 0 ? exp.monoBand[i] / exp.oscBand[i] : 0;
                 const tgtMono = tgt >= 1;
@@ -770,8 +828,41 @@ export default function PhotonAccumulation() {
                     <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11.5, color: C.dim, marginTop: 6 }}>
                       converges to {(tgtMono ? tgt : 1 / tgt).toFixed(2)}× {tgtMono ? "mono" : "OSC"}
                     </div>
-                    <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11.5, color: C.dim, marginTop: 3 }}>
-                      mono {mc.toLocaleString()} · osc {oc.toLocaleString()}
+                    <div style={{ borderTop: `1px solid ${C.edge}`, marginTop: 8, paddingTop: 7, fontSize: 11.5, lineHeight: 1.6 }}>
+                      <Fate n={mc} label="recorded by mono" tone={C.mid} />
+                      {(ui.monoLostBand[i] || 0) > 0 && (
+                        <>
+                          <Fate n={ui.monoLostBand[i] || 0} label="discarded" tone={C.mid} />
+                          {M.bands.map((ob, f) => {
+                            const n = (ui.monoLostBy[i] && ui.monoLostBy[i][f]) || 0;
+                            return n > 0
+                              ? <Fate key={f} n={n} indent label={`${ob.name} filter on the wheel`} />
+                              : null;
+                          })}
+                        </>
+                      )}
+                      <div style={{ height: 7 }} />
+                      <Fate n={oc} label="recorded by the OSC" tone={C.mid} />
+                      {oLost > 0 && (
+                        <>
+                          <Fate n={oLost} label="discarded" tone={C.mid} />
+                          {(M.oscSeq || []).map((fset, d) => {
+                            const n = (ui.oscSlabBy[i] && ui.oscSlabBy[i][d]) || 0;
+                            return n > 0
+                              ? <Fate key={d} n={n} indent label={`${fset.map((x) => M.bands[x].name).join("+")} duoband mounted`} />
+                              : null;
+                          })}
+                          {(ui.oscDyeBand[i] || 0) > 0 && (
+                            <Fate n={ui.oscDyeBand[i] || 0} indent label="pixel blind to it" />
+                          )}
+                          {(ui.oscPartBand[i] || 0) > 0 && (
+                            <Fate n={ui.oscPartBand[i] || 0} indent label="blue dye absorbed it" />
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: C.dim, lineHeight: 1.5, marginTop: 7 }}>
+                      {LINE_WHY[b.name] || ""}
                     </div>
                   </div>
                 );
@@ -817,6 +908,7 @@ export default function PhotonAccumulation() {
         </p>
       </div>
       {docs && <Docs onClose={() => setDocs(false)} />}
+      {caveats && <Caveats onClose={() => setCaveats(false)} />}
     </div>
   );
 }
@@ -920,11 +1012,32 @@ function Docs({ onClose }) {
         />
         <P>
           That 0.6 on blue is why an O is sometimes accepted on the blue pixel and
-          sometimes not. At 500.7 nm the line sits on the shoulder where blue is
-          falling off and green is rising, so blue converts it about six times in
-          ten. Averaged over the tile, OIII reaches 65% of the array against 25%
-          for Hα and SII — which is exactly why the OSC beats mono on OIII while
-          losing badly on the other two lines.
+          sometimes not. At 500.7 nm the line sits where the blue dye is already
+          closing, so it transmits the photon about six times in ten and absorbs
+          it as heat the rest. Averaged over the tile, OIII reaches 65% of the
+          array against 25% for Hα and SII — exactly why the OSC beats mono on
+          OIII while losing badly on the other two lines.
+        </P>
+        <P>
+          It is worth being precise about which layer does this. A photon reaching
+          an OSC pixel passes two gates in series: the <B>dye</B> transmits some
+          fraction of what arrives, and of what gets through, the <B>silicon</B>
+          converts some fraction into a collected electron. The numbers in the
+          table are dye transmission only. Silicon quantum efficiency is left out
+          deliberately, because it is common to every pixel and to the mono sensor
+          too, so it cancels out of every ratio here. Dye transmission does not
+          cancel: it exists only on the OSC, and every photon it absorbs is one
+          mono would have kept.
+        </P>
+        <P>
+          So an OIII photon can fail on the OSC in three distinct ways, and the
+          per-line panel counts them separately: <B>stopped by the duoband</B>, if
+          that filter is not the one currently mounted; <B>pixel blind to it</B>,
+          meaning a red pixel with no transmission at 500.7 nm; or <B>absorbed by
+          the blue dye</B>, having reached a pixel that does transmit it, but only
+          partly. Hα and SII never show the third kind — the dyes are either open
+          or shut for them, so it is always a flat yes or no. Mono has only one
+          way to lose a photon at all: the wrong filter was on the wheel.
         </P>
         <P>
           On a Bayer array Hα and SII behave identically: both are red light, both
@@ -989,7 +1102,9 @@ function Docs({ onClose }) {
           Both narrowband overall figures read 1.11×, which badly understates the
           case. That is an artefact of averaging over an equal mix of lines:
           mono's large wins on Hα and SII are diluted by its loss on OIII. The
-          per-line numbers are the ones that matter.
+          per-line numbers are the ones that matter — and the warning button
+          above the per-line panel sets out the rest of the reservations, all of
+          which lean the same way.
         </P>
 
         <H>What is deliberately left out</H>
@@ -1018,6 +1133,102 @@ function Docs({ onClose }) {
           model, the telescope or the sky brightness — those set how long the
           night has to be, not who collects more of it.
         </div>
+      </div>
+    </div>
+  );
+}
+
+function Caveats({ onClose }) {
+  useEffect(() => {
+    const k = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+
+  return (
+    <div onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(4,7,13,0.72)", zIndex: 50, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "24px 14px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: "#FFFFFF", color: D.ink, maxWidth: 720, width: "100%", borderRadius: 16, padding: "22px 24px 30px", fontFamily: "ui-sans-serif, -apple-system, 'Helvetica Neue', Arial, sans-serif", lineHeight: 1.62, fontSize: 14.5, boxShadow: "0 24px 60px rgba(0,0,0,0.45)" }}>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 6 }}>
+          <h2 style={{ margin: 0, fontSize: 21, fontWeight: 700 }}>Reservations on the narrowband numbers</h2>
+          <button onClick={onClose}
+            style={{ background: D.chip, border: `1px solid ${D.rule}`, borderRadius: 8, padding: "5px 11px", fontSize: 13, fontWeight: 600, cursor: "pointer", color: D.ink, fontFamily: "inherit", flexShrink: 0 }}>
+            Close
+          </button>
+        </div>
+
+        <div style={{ background: "#FDF6E3", border: "1px solid #E8D5A0", borderRadius: 10, padding: "12px 14px", margin: "10px 0 16px", fontSize: 14 }}>
+          <B>This model is deliberately generous to the OSC.</B> Every assumption
+          below leans the same way, so the real mono advantage in narrowband is
+          larger than what you see here — in some cases considerably. The overall
+          1.11× figure in particular is the most pessimistic-for-mono number in
+          the whole tool and should not be quoted on its own.
+        </div>
+
+        <H>The line mix is equal, and no real target is</H>
+        <P>
+          The run delivers Hα, OIII and SII in equal numbers. That is a modelling
+          convenience, not astronomy. A typical emission nebula is roughly 70% Hα,
+          20% OIII, 10% SII in photon terms.
+        </P>
+        <P>
+          Mono does not care about the mix — it captures a third of whatever
+          arrives. The OSC does care, because its worst channel is Hα. Rerun SHO
+          with a 70/20/10 mix and the OSC falls to 0.23 against mono's 0.333, so
+          the overall ratio moves from <B>1.11× to about 1.45×</B>. Weight it
+          further toward Hα and it keeps climbing.
+        </P>
+
+        <H>Mono is made to spend its time evenly, which nobody does</H>
+        <P>
+          Here mono gives a third of the run to each line. In practice you spend
+          more time on the weak lines — 20/30/50 or whatever the target needs. The
+          OSC cannot do this at all: its duobands are fixed packages, so asking
+          for more SII forces more OIII along with it.
+        </P>
+        <P>
+          That freedom to allocate time unevenly is the entire architectural
+          advantage of mono, and this simulation is configured not to use it.
+        </P>
+
+        <H>Four real effects sit outside the model</H>
+        <UL items={[
+          <><B>CFA transmission in-band.</B> A real Bayer dye passes only about 85 to 90% even at the peak of its own passband; here it is a clean 100%. This inconsistency is worth naming: the model charges the OSC for partial transmission at the OIII crossover, where it looks most rigorous, yet gives it a free pass everywhere else — so the OSC is flattered precisely where the physics appears most careful.</>,
+          <><B>Demosaicing.</B> It costs mid-frequency detail, and worst on Hα, which arrives on a red grid twice as coarse as the mono one. Not modelled at all.</>,
+          <><B>Dye leakage.</B> Real Bayer channels overlap heavily — green has non-zero response at 656 nm, and there is no wavelength where one dye is cleanly open and the others cleanly shut. Separating them needs a correction matrix that amplifies noise. Every response here outside the OIII crossover is an idealised 0 or 1, which is a larger simplification in the LRGB scenarios than in the narrowband ones.</>,
+          <><B>Read noise.</B> Each OSC pixel sees only its half of the duoband, so it reaches the sky-limited threshold at longer subs than mono does. No noise of any kind is modelled.</>,
+        ]} />
+
+        <H>SII is a capability gap, not a time penalty</H>
+        <P>
+          On a Bayer array Hα and SII both land only on red pixels and cannot be
+          told apart there. The 2.67× shown for SII understates the situation: it
+          is not that the OSC is slower, it is that without a second duoband it
+          cannot isolate SII at all. No time ratio captures that.
+        </P>
+
+        <H>What the model gets right</H>
+        <P>
+          The geometry is exact. Array fractions of 0.25 for Hα and SII and 0.65
+          for OIII follow directly from the RGGB tile and the position of each
+          line. So does the duty-cycle arithmetic. Those parts you can trust.
+        </P>
+        <P>
+          And one thing genuinely does not matter: <B>filter bandwidth</B>. A 3 nm
+          filter collects less sky than a 7 nm one, but by the same factor on both
+          cameras, so it cancels out of every ratio here.
+        </P>
+
+        <H>The short version</H>
+        <P>
+          Mono's advantage is understated for SHO and roughly fair for HOO. The
+          genuinely counter-intuitive result — and the one worth repeating — is
+          not that mono loses, but that <B>OIII is the single line where a colour
+          sensor beats mono outright</B>, because 500.7 nm recruits green and most
+          of blue for about 65% of the array against mono's 50% duty cycle.
+        </P>
       </div>
     </div>
   );
@@ -1085,6 +1296,17 @@ function ScheduleBar({ label, segs, active, done }) {
       <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11, color: done ? C.dim : C.mid, width: 74, textAlign: "right" }}>
         {segs[active].name}
       </span>
+    </div>
+  );
+}
+
+function Fate({ n, label, tone, indent }) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "baseline", paddingLeft: indent ? 16 : 0 }}>
+      <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11.5, color: tone || C.dim, minWidth: 42, textAlign: "right", fontWeight: tone ? 600 : 400 }}>
+        {(n || 0).toLocaleString()}
+      </span>
+      <span style={{ color: tone || C.dim }}>{label}</span>
     </div>
   );
 }
