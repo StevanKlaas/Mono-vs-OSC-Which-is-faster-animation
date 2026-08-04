@@ -228,6 +228,7 @@ export default function PhotonAccumulation() {
   const [mode, setMode] = useState("lum");
   const [speed, setSpeed] = useState(1);
   const [playing, setPlaying] = useState(true);
+  const [docs, setDocs] = useState(false);
   const hubRef = useRef(false);
   const [ui, setUi] = useState({
     delivered: 0, monoTot: 0, oscTot: 0, monoAll: 0,
@@ -658,7 +659,13 @@ export default function PhotonAccumulation() {
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <h1 style={{ fontSize: 19, fontWeight: 600, margin: 0 }}>Where the mono advantage comes from</h1>
-          <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.20</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={() => setDocs(true)}
+              style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+              How it works
+            </button>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.21</span>
+          </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
           One photon stream, delivered identically to both sensors. Mono's filter
@@ -790,6 +797,249 @@ export default function PhotonAccumulation() {
           on the same red pixels: only the filter in front tells them apart.
         </p>
       </div>
+      {docs && <Docs onClose={() => setDocs(false)} />}
+    </div>
+  );
+}
+
+/* ---------------- documentation ---------------- */
+
+const D = { ink: "#1B2230", soft: "#5A6577", rule: "#E3E7EE", chip: "#F4F6F9" };
+
+function Docs({ onClose }) {
+  useEffect(() => {
+    const k = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+
+  const rows = ["lum", "s8", "s4", "s1", "s0", "hoo", "sho"].map((k) => {
+    const M = MODES[k], e = expected(k);
+    return { k, label: M.label, nb: M.group === "nb", e, M };
+  });
+
+  return (
+    <div onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(4,7,13,0.72)", zIndex: 50, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "24px 14px", overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ background: "#FFFFFF", color: D.ink, maxWidth: 760, width: "100%", borderRadius: 16, padding: "22px 24px 30px", fontFamily: "ui-sans-serif, -apple-system, 'Helvetica Neue', Arial, sans-serif", lineHeight: 1.62, fontSize: 14.5, boxShadow: "0 24px 60px rgba(0,0,0,0.45)" }}>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 6 }}>
+          <h2 style={{ margin: 0, fontSize: 21, fontWeight: 700, letterSpacing: "-0.01em" }}>How this simulator works</h2>
+          <button onClick={onClose}
+            style={{ background: D.chip, border: `1px solid ${D.rule}`, borderRadius: 8, padding: "5px 11px", fontSize: 13, fontWeight: 600, cursor: "pointer", color: D.ink, fontFamily: "inherit", flexShrink: 0 }}>
+            Close
+          </button>
+        </div>
+        <p style={{ color: D.soft, marginTop: 0, fontSize: 13.5 }}>
+          A photon-by-photon account of why a mono camera and a colour camera end
+          a night with different numbers of electrons.
+        </p>
+
+        <H>The setup</H>
+        <P>
+          Each panel is a patch of sensor just four pixels across — two by two.
+          That is the smallest piece containing a whole Bayer tile, so it is all
+          you need to see the effect. On the left is a mono sensor, on the right
+          an OSC with the usual RGGB colour filter array.
+        </P>
+        <P>
+          The important part is that <B>both panels receive the same light</B>.
+          Every photon is created once, then handed to both cameras at the same
+          instant, on the same trajectory, aimed at the same pixel. Any difference
+          at the end is the camera, not luck.
+        </P>
+
+        <H>How a photon is made</H>
+        <P>
+          Dice are rolled for each photon: which band it belongs to, which of the
+          four pixels it is heading for, and — where the response is partial —
+          whether that pixel actually converts it.
+        </P>
+        <UL items={[
+          <>In the LRGB scenarios every photon is broadband, equally likely to be red, green or blue.</>,
+          <>In the narrowband scenarios <B>70% of arriving photons are continuum and sky glow</B>, drawn small and plain in red, green and blue. The other 30% are emission line photons, drawn larger with a glow and carrying their letter — H, O or S — until they land.</>,
+          <>The target pixel is chosen uniformly, so over a long run each of the four receives a quarter of the light.</>,
+        ]} />
+        <P>
+          The speed control changes only how fast photons arrive. Slow is for
+          watching one at a time; Sprint reaches the converged numbers quickly.
+          <B> Finish session</B> jumps straight to the end of the run.
+        </P>
+
+        <H>The two places a photon can die</H>
+        <P>This is the heart of it, and the two cameras do not have the same stages.</P>
+        <P>
+          <B>The slab</B> is a filter in front of the whole sensor. Mono always
+          has one — L, or R, G, B, or a narrowband filter. In narrowband the OSC
+          has a slab too, its duoband. A photon whose band the slab does not pass
+          stops there and never reaches the sensor. This is where all the
+          continuum dies in narrowband, on both cameras equally.
+        </P>
+        <P>
+          <B>The dye</B> is bonded to each individual pixel, and only the OSC has
+          one. A photon that clears the slab must still land on a pixel whose dye
+          responds to it. Mono has no dye at all, so anything past the slab is
+          recorded wherever it falls. That single difference is the whole mono
+          advantage.
+        </P>
+
+        <H>What each dye responds to</H>
+        <P>
+          The colour filter array is the same physical object whatever light
+          arrives, so it stays RGGB in narrowband too. Response is a probability,
+          not a yes or no:
+        </P>
+        <Table
+          head={["Dye", "Hα 656 nm", "OIII 500.7 nm", "SII 672 nm"]}
+          body={[
+            ["R", "1.0", "0", "1.0"],
+            ["G", "0", "1.0", "0"],
+            ["B", "0", "0.6", "0"],
+            ["array average", "0.25", "0.65", "0.25"],
+          ]}
+        />
+        <P>
+          That 0.6 on blue is why an O is sometimes accepted on the blue pixel and
+          sometimes not. At 500.7 nm the line sits on the shoulder where blue is
+          falling off and green is rising, so blue converts it about six times in
+          ten. Averaged over the tile, OIII reaches 65% of the array against 25%
+          for Hα and SII — which is exactly why the OSC beats mono on OIII while
+          losing badly on the other two lines.
+        </P>
+        <P>
+          On a Bayer array Hα and SII behave identically: both are red light, both
+          land only on red pixels. They are not merely slower on an OSC, they are
+          <B> inseparable</B>. Only the filter in front can tell them apart, which
+          is why SHO on a colour camera needs two duobands.
+        </P>
+
+        <H>Filter schedules</H>
+        <P>
+          Every run has a fixed budget of photons, and each sensor divides that
+          budget into blocks of its own. The two bars under the canvas are drawn
+          separately because the schedules genuinely differ.
+        </P>
+        <UL items={[
+          <>LRGB runs a single pass: all the luminance first, then R, then G, then B. The OSC never changes filter at all — one unbroken UV/IR cut.</>,
+          <>HOO: mono mounts Hα then OIII, half the run each. The OSC keeps one Hα+OIII duoband all night and so collects both lines throughout.</>,
+          <>SHO: mono mounts SII, then Hα, then OIII, a third each. The OSC swaps once — Hα+OIII for the first half, SII+OIII for the second — changing filter at a different moment from mono, and collecting OIII under both.</>,
+        ]} />
+
+        <H>The slate</H>
+        <P>
+          Beneath each sensor is a slate with exactly one socket for every photon
+          in the run's budget. A photon the sensor never recorded falls there and
+          stays, lit in its own colour; a photon that was recorded leaves its
+          socket empty. A completely full slate would mean nothing at all was
+          captured, so the lit fraction is literally the discard rate.
+        </P>
+
+        <H>Where the numbers come from</H>
+        <P>
+          Under a bright sky the noise is dominated by the sky itself, and signal
+          to noise goes as the square root of the photons collected. Two
+          consequences, both used in the readouts:
+        </P>
+        <UL items={[
+          <><B>Photon ratio = time advantage.</B> Reaching the same SNR takes the same number of photons, so a camera collecting twice as many gets there in half the time.</>,
+          <><B>SNR advantage = √(photon ratio).</B> Twice the photons is 1.41× the signal to noise, not twice.</>,
+        ]} />
+        <P>
+          The per-line panel shows the analytic equilibrium value rather than the
+          running count, so it is right from the first frame instead of wandering
+          while the statistics settle. The live tallies beneath it converge to it.
+        </P>
+
+        <H>What every scenario converges to</H>
+        <Table
+          head={["Scenario", "Overall", "Per line"]}
+          body={rows.map((r) => [
+            r.label,
+            r.e.ratio.toFixed(2) + "×",
+            r.nb
+              ? r.M.bands.map((b, i) => {
+                  const q = r.e.oscBand[i] > 0 ? r.e.monoBand[i] / r.e.oscBand[i] : 0;
+                  return b.name + " " + (q >= 1 ? q.toFixed(2) + "× mono" : (1 / q).toFixed(2) + "× OSC");
+                }).join(",  ")
+              : "—",
+          ])}
+        />
+        <P>
+          Both narrowband overall figures read 1.11×, which badly understates the
+          case. That is an artefact of averaging over an equal mix of lines:
+          mono's large wins on Hα and SII are diluted by its loss on OIII. The
+          per-line numbers are the ones that matter.
+        </P>
+
+        <H>What is deliberately left out</H>
+        <P>
+          The model is pure photon bookkeeping. There is no read noise, no dark
+          current, no atmosphere and no optical throughput, because none of them
+          change the comparison — they apply to both cameras alike.
+        </P>
+        <P>
+          Three real effects <B>are</B> missing, and all three favour the OSC
+          here, so the true mono advantage is a little larger than shown: a real
+          colour filter array passes only about 85 to 90% of light even inside its
+          own passband; demosaicing costs mid-frequency detail, worst on Hα which
+          arrives on a grid twice as coarse; and the OSC's synthetic luminance is
+          weighted (R+2G+B)/4 rather than flat, which under-serves red targets.
+        </P>
+        <P>
+          One thing that genuinely does not matter: <B>filter bandwidth</B>. A
+          3 nm filter collects less sky than a 7 nm one, but by the same factor on
+          both cameras, so it cancels exactly out of every ratio here. Narrower
+          filters shorten the night for everyone; they do not change who wins.
+        </P>
+
+        <div style={{ borderTop: `1px solid ${D.rule}`, marginTop: 22, paddingTop: 14, color: D.soft, fontSize: 12.5 }}>
+          Everything above is geometry and counting. Nothing depends on the sensor
+          model, the telescope or the sky brightness — those set how long the
+          night has to be, not who collects more of it.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function H({ children }) {
+  return <h3 style={{ fontSize: 15.5, fontWeight: 700, margin: "22px 0 6px" }}>{children}</h3>;
+}
+function P({ children }) {
+  return <p style={{ margin: "0 0 10px" }}>{children}</p>;
+}
+function B({ children }) {
+  return <strong style={{ fontWeight: 700 }}>{children}</strong>;
+}
+function UL({ items }) {
+  return (
+    <ul style={{ margin: "0 0 10px", paddingLeft: 20 }}>
+      {items.map((it, i) => <li key={i} style={{ marginBottom: 5 }}>{it}</li>)}
+    </ul>
+  );
+}
+function Table({ head, body }) {
+  return (
+    <div style={{ overflowX: "auto", margin: "4px 0 12px" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13.2 }}>
+        <thead>
+          <tr>
+            {head.map((h, i) => (
+              <th key={i} style={{ textAlign: i === 0 ? "left" : "center", padding: "6px 10px", borderBottom: `2px solid ${D.rule}`, color: D.soft, fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((r, i) => (
+            <tr key={i}>
+              {r.map((c, j) => (
+                <td key={j} style={{ textAlign: j === 0 ? "left" : "center", padding: "6px 10px", borderBottom: `1px solid ${D.rule}`, fontFamily: j === 0 ? "inherit" : "ui-monospace, Menlo, monospace", fontWeight: j === 0 ? 600 : 400 }}>{c}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
