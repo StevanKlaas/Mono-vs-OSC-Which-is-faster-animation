@@ -438,12 +438,27 @@ export default function PhotonAccumulation() {
           ctx.lineWidth = 2.4; ctx.lineCap = "round";
           ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(p.x, p.y); ctx.stroke();
           ctx.globalAlpha = 1;
+          /* narrowband line photons carry their letter until they land */
+          const isLine = M.group === "nb" && !p.cont;
           ctx.globalAlpha = p.cont ? 0.14 : 0.26;
           ctx.fillStyle = col;
-          ctx.beginPath(); ctx.arc(p.x, p.y, p.cont ? 4.5 : 8, 0, 6.2832); ctx.fill();
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.cont ? 4.5 : isLine ? 11 : 8, 0, 6.2832);
+          ctx.fill();
           ctx.globalAlpha = 1;
           ctx.fillStyle = col;
-          ctx.beginPath(); ctx.arc(p.x, p.y, p.cont ? 2.8 : 3.6, 0, 6.2832); ctx.fill();
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.cont ? 2.8 : isLine ? 6.6 : 3.6, 0, 6.2832);
+          ctx.fill();
+          if (isLine) {
+            ctx.font = "700 9px ui-monospace, Menlo, monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "rgba(7,11,20,0.88)";
+            ctx.fillText(M.bands[p.band].name[0], p.x, p.y + 0.5);
+            ctx.textBaseline = "alphabetic";
+            ctx.textAlign = "left";
+          }
         } else {
           ctx.globalAlpha = 0.5; ctx.fillStyle = col;
           ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, 6.2832); ctx.fill();
@@ -643,7 +658,7 @@ export default function PhotonAccumulation() {
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <h1 style={{ fontSize: 19, fontWeight: 600, margin: 0 }}>Where the mono advantage comes from</h1>
-          <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.19</span>
+          <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.20</span>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
           One photon stream, delivered identically to both sensors. Mono's filter
