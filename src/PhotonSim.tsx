@@ -664,7 +664,7 @@ export default function PhotonAccumulation() {
               style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               How it works
             </button>
-            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.21</span>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.22</span>
           </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
@@ -740,19 +740,27 @@ export default function PhotonAccumulation() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
               {M.bands.map((b, i) => {
-                const r = exp.oscBand[i] > 0 ? exp.monoBand[i] / exp.oscBand[i] : 0;
-                const monoWins = r >= 1;
+                const mc = ui.monoBand[i] || 0, oc = ui.oscBand[i] || 0;
+                /* measured, like every other readout; the analytic value is
+                   shown underneath as the figure it settles on */
+                const live = mc > 0 && oc > 0 ? mc / oc : 0;
+                const monoWins = live >= 1;
+                const tgt = exp.oscBand[i] > 0 ? exp.monoBand[i] / exp.oscBand[i] : 0;
+                const tgtMono = tgt >= 1;
                 return (
                   <div key={i} style={{ border: `1px solid ${C.edge}`, borderRadius: 10, padding: "9px 11px" }}>
                     <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12, fontWeight: 700, color: bandCol(M, i), marginBottom: 4 }}>{b.name}</div>
-                    <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 18, fontWeight: 600, color: monoWins ? C.bright : "#8FA6C8" }}>
-                      {(monoWins ? r : 1 / r).toFixed(2)}×
+                    <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 18, fontWeight: 600, color: live === 0 ? C.dim : monoWins ? C.bright : "#8FA6C8" }}>
+                      {live === 0 ? "—" : `${(monoWins ? live : 1 / live).toFixed(2)}×`}
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 500, color: C.mid, marginTop: 4, letterSpacing: "0.01em" }}>
-                      {monoWins ? "faster on mono" : "faster on the OSC"}
+                      {live === 0 ? "collecting" : monoWins ? "faster on mono" : "faster on the OSC"}
                     </div>
                     <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10, color: C.dim, marginTop: 5 }}>
-                      mono {(ui.monoBand[i] || 0).toLocaleString()} · osc {(ui.oscBand[i] || 0).toLocaleString()}
+                      converges to {(tgtMono ? tgt : 1 / tgt).toFixed(2)}× {tgtMono ? "mono" : "OSC"}
+                    </div>
+                    <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10, color: C.dim, marginTop: 2 }}>
+                      mono {mc.toLocaleString()} · osc {oc.toLocaleString()}
                     </div>
                   </div>
                 );
@@ -946,9 +954,10 @@ function Docs({ onClose }) {
           <><B>SNR advantage = √(photon ratio).</B> Twice the photons is 1.41× the signal to noise, not twice.</>,
         ]} />
         <P>
-          The per-line panel shows the analytic equilibrium value rather than the
-          running count, so it is right from the first frame instead of wandering
-          while the statistics settle. The live tallies beneath it converge to it.
+          The per-line panel counts real photons, exactly like the headline
+          figures, so it wanders early in a run while the statistics are thin and
+          settles as the counts build. The analytic value it is heading for is
+          printed underneath each one.
         </P>
 
         <H>What every scenario converges to</H>
