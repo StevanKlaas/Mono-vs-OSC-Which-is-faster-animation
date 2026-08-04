@@ -92,7 +92,7 @@ const MODES = {
   sho: {
     label: "SHO", group: "nb", bands: NB_BANDS, resp: NB_RESP,
     monoSeq: [2, 0, 1],         // SII, Ha, OIII
-    oscSeq: [[0, 1], [1, 2]],   // Ha+OIII, then SII+OIII
+    oscSeq: [[1, 2], [0, 1]],   // OIII+SII first, then Ha+OIII
     budget: 1200, cont: CONT_FRAC,
   },
 };
@@ -664,7 +664,7 @@ export default function PhotonAccumulation() {
               style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               How it works
             </button>
-            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.22</span>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.23</span>
           </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
@@ -931,7 +931,7 @@ function Docs({ onClose }) {
         <UL items={[
           <>LRGB runs a single pass: all the luminance first, then R, then G, then B. The OSC never changes filter at all — one unbroken UV/IR cut.</>,
           <>HOO: mono mounts Hα then OIII, half the run each. The OSC keeps one Hα+OIII duoband all night and so collects both lines throughout.</>,
-          <>SHO: mono mounts SII, then Hα, then OIII, a third each. The OSC swaps once — Hα+OIII for the first half, SII+OIII for the second — changing filter at a different moment from mono, and collecting OIII under both.</>,
+          <>SHO: mono mounts SII, then Hα, then OIII, a third each. The OSC swaps once — OIII+SII for the first half, Hα+OIII for the second — changing filter at a different moment from mono, and collecting OIII under both.</>,
         ]} />
 
         <H>The slate</H>
