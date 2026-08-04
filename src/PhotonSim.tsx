@@ -177,15 +177,15 @@ function freshSim(nb) {
 /* ---------------- layout ---------------- */
 
 function makeLayout(W, H, budget) {
-  const cell = Math.round(Math.max(44, Math.min(80, W * 0.084)));
-  const gap = Math.round(cell * 0.13);
+  const cell = Math.round(Math.max(60, Math.min(150, W * 0.155)));
+  const gap = Math.round(cell * 0.09);
   const gw = cell * 2 + gap, gh = cell * 2 + gap;
-  const panelW = Math.round(gw + cell * 2.2);
-  const panelGap = Math.round(cell * 0.55);
+  const panelW = Math.round(gw + cell * 0.5);
+  const panelGap = Math.round(cell * 0.28);
 
   const labelY = 22, badgeY = 42, panelTop = 58;
   const apexY = panelTop + 34;
-  const gridTop = apexY + Math.round(cell * 1.75);
+  const gridTop = apexY + Math.round(cell * 0.8);
   const filterY = apexY + (gridTop - apexY) * 0.56;
   const slateY = gridTop + gh + 30;
   const slatePad = 14;
@@ -290,7 +290,8 @@ export default function PhotonAccumulation() {
     if (M.monoSeq && s.pos >= budgetOf(m)) s.done = true;
   }, []);
 
-  const H = 520;
+  const [canvasH, setCanvasH] = useState(640);
+  const hRef = useRef(640);
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -307,7 +308,9 @@ export default function PhotonAccumulation() {
       const s = sim.current, m = modeRef.current, M = MODES[m];
       const nb = M.bands.length;
       const budget = budgetOf(m);
-      const L = makeLayout(W, H, budget);
+      const L = makeLayout(W, 0, budget);
+      const H = L.panelTop + L.panelH + 14;
+      if (Math.abs(H - hRef.current) > 1) { hRef.current = H; setCanvasH(H); }
       const spd = spdRef.current;
 
       /* ---- spawn ---- */
@@ -542,7 +545,7 @@ export default function PhotonAccumulation() {
     }
 
     /* cells — the dye is always RGGB, whatever light is arriving */
-    const numSize = Math.round(L.cell * 0.36);
+    const numSize = Math.round(L.cell * 0.32);
     for (let i = 0; i < 4; i++) {
       const c = L.center(px, i), n = counts[i];
       const b = 1 - Math.exp(-n / 40);
@@ -640,7 +643,7 @@ export default function PhotonAccumulation() {
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <h1 style={{ fontSize: 19, fontWeight: 600, margin: 0 }}>Where the mono advantage comes from</h1>
-          <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.18</span>
+          <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.19</span>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
           One photon stream, delivered identically to both sensors. Mono's filter
@@ -680,7 +683,7 @@ export default function PhotonAccumulation() {
         </div>
 
         <div style={{ position: "relative", border: `1px solid ${C.edge}`, borderRadius: 16, overflow: "hidden", background: "radial-gradient(120% 80% at 50% -10%, #101A2C 0%, #070B14 62%)" }}>
-          <canvas ref={canvasRef} style={{ width: "100%", height: H, display: "block" }} />
+          <canvas ref={canvasRef} style={{ width: "100%", height: canvasH, display: "block" }} />
         </div>
 
         {M.monoSeq && (
