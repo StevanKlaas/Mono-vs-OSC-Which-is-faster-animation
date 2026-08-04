@@ -187,9 +187,9 @@ function makeLayout(W, H, budget) {
   const apexY = panelTop + 34;
   const gridTop = apexY + Math.round(cell * 0.8);
   const filterY = apexY + (gridTop - apexY) * 0.56;
-  const slateY = gridTop + gh + 30;
+  const slateY = gridTop + gh + 34;
   const slatePad = 14;
-  const panelH = slateY + SLATE_H + 26 - panelTop;
+  const panelH = slateY + SLATE_H + 30 - panelTop;
 
   const monoPX = Math.round(W / 2 - panelGap / 2 - panelW);
   const oscPX = Math.round(W / 2 + panelGap / 2);
@@ -324,8 +324,7 @@ export default function PhotonAccumulation() {
           const band = cont ? 0 : (Math.random() * nb) | 0;
           const px = (Math.random() * 4) | 0;
           const mf = monoFilterAt(s.pos, m), of = oscFilterAt(s.pos, m);
-          const jx = (Math.random() - 0.5) * L.cell * 0.34;
-          const jy = (Math.random() - 0.5) * L.cell * 0.34;
+          const jx = 0, jy = 0; // land dead centre, so the ray is the path
           const col = cont
             ? CONT_COL[(Math.random() * 3) | 0]
             : bandCol(M, band);
@@ -436,7 +435,7 @@ export default function PhotonAccumulation() {
           grd.addColorStop(0, "rgba(0,0,0,0)");
           grd.addColorStop(1, col);
           ctx.globalAlpha = 0.42; ctx.strokeStyle = grd;
-          ctx.lineWidth = 2.4; ctx.lineCap = "round";
+          ctx.lineWidth = 3.2; ctx.lineCap = "round";
           ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(p.x, p.y); ctx.stroke();
           ctx.globalAlpha = 1;
           /* narrowband line photons carry their letter until they land */
@@ -452,7 +451,7 @@ export default function PhotonAccumulation() {
           ctx.arc(p.x, p.y, p.cont ? 2.8 : isLine ? 6.6 : 3.6, 0, 6.2832);
           ctx.fill();
           if (isLine) {
-            ctx.font = "700 9px ui-monospace, Menlo, monospace";
+            ctx.font = "700 10px ui-monospace, Menlo, monospace";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillStyle = "rgba(7,11,20,0.88)";
@@ -461,8 +460,10 @@ export default function PhotonAccumulation() {
             ctx.textAlign = "left";
           }
         } else {
-          ctx.globalAlpha = 0.5; ctx.fillStyle = col;
-          ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, 6.2832); ctx.fill();
+          ctx.globalAlpha = 0.22; ctx.fillStyle = col;
+          ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 6.2832); ctx.fill();
+          ctx.globalAlpha = 0.72;
+          ctx.beginPath(); ctx.arc(p.x, p.y, 4.2, 0, 6.2832); ctx.fill();
           ctx.globalAlpha = 1;
         }
       }
@@ -495,7 +496,7 @@ export default function PhotonAccumulation() {
     const isNB = M.group === "nb";
 
     ctx.textAlign = "center";
-    ctx.font = "600 11px ui-monospace, Menlo, monospace";
+    ctx.font = "600 12.5px ui-monospace, Menlo, monospace";
     ctx.fillStyle = isMono ? C.bright : "#8FA6C8";
     lsText(ctx, isMono ? "MONO" : "OSC · BAYER", midX, L.labelY, 2.4);
 
@@ -505,7 +506,7 @@ export default function PhotonAccumulation() {
       : isMono
         ? `${M.bands[filt].name} — blocks the rest`
         : `${filt.map((b) => M.bands[b].name).join(" + ")} duoband`;
-    ctx.font = "500 11px ui-monospace, Menlo, monospace";
+    ctx.font = "500 12.5px ui-monospace, Menlo, monospace";
     ctx.fillStyle = filt === null ? (isMono ? C.gold : C.dim)
       : isMono ? bandCol(M, filt) : C.mid;
     ctx.fillText(fLabel, midX, L.badgeY);
@@ -516,7 +517,7 @@ export default function PhotonAccumulation() {
 
     for (let i = 0; i < 4; i++) {
       const c = L.center(px, i);
-      ctx.strokeStyle = "rgba(120,150,200,0.115)"; ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(130,162,214,0.22)"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(ap.x, ap.y); ctx.lineTo(c.x, c.y); ctx.stroke();
     }
 
@@ -524,9 +525,9 @@ export default function PhotonAccumulation() {
     ctx.beginPath(); ctx.arc(ap.x, ap.y, 3, 0, 6.2832); ctx.fill();
     ctx.strokeStyle = "rgba(212,169,74,0.28)"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(ap.x - 15, ap.y); ctx.lineTo(ap.x + 15, ap.y); ctx.stroke();
-    ctx.font = "500 9px ui-monospace, Menlo, monospace";
+    ctx.font = "500 10.5px ui-monospace, Menlo, monospace";
     ctx.fillStyle = C.dim; ctx.textAlign = "center";
-    ctx.fillText("aperture", ap.x, ap.y - 10);
+    ctx.fillText("aperture", ap.x, ap.y - 11);
 
     /* the slab: mono always has one; the OSC only in narrowband */
     if (isMono || isNB) {
@@ -550,12 +551,12 @@ export default function PhotonAccumulation() {
       ctx.strokeStyle = `rgba(${edge[0]},${edge[1]},${edge[2]},${(fBands ? 0.6 : 0.3) + pl * 0.35})`;
       ctx.lineWidth = 1 + pl * 1.6;
       ctx.stroke();
-      ctx.font = "700 9px ui-monospace, Menlo, monospace";
+      ctx.font = "700 11px ui-monospace, Menlo, monospace";
       ctx.fillStyle = fBands ? bandCol(M, fBands[0]) : C.mid;
       ctx.textAlign = "left";
       ctx.fillText(fBands ? fBands.map((b) => M.bands[b].name).join("+") : "L", sxx + sw + 6, L.filterY + 3.5);
       ctx.textAlign = "right";
-      ctx.font = "500 8.5px ui-monospace, Menlo, monospace";
+      ctx.font = "500 10px ui-monospace, Menlo, monospace";
       ctx.fillStyle = C.dim;
       ctx.fillText("filter", sxx - 6, L.filterY + 3);
     }
@@ -578,10 +579,10 @@ export default function PhotonAccumulation() {
       ctx.fillStyle = b > 0.45 ? "rgba(7,11,20,0.88)" : C.mid;
       ctx.fillText(String(n), c.x, c.y + 1);
       if (!isMono) {
-        ctx.font = "700 9px ui-monospace, Menlo, monospace";
+        ctx.font = "700 11.5px ui-monospace, Menlo, monospace";
         ctx.fillStyle = b > 0.45 ? "rgba(7,11,20,0.55)" : DYE_COL[DYE[i]];
         ctx.textAlign = "left";
-        ctx.fillText(DYE_NAME[DYE[i]], x + 6, y + 10);
+        ctx.fillText(DYE_NAME[DYE[i]], x + 7, y + 13);
       }
       ctx.textBaseline = "alphabetic";
     }
@@ -589,12 +590,12 @@ export default function PhotonAccumulation() {
     /* slate */
     const frac = s.delivered ? lost / s.delivered : 0;
     const sx0 = px + L.slatePad;
-    ctx.font = "500 9.5px ui-monospace, Menlo, monospace";
+    ctx.font = "600 12px ui-monospace, Menlo, monospace";
     ctx.textAlign = "left"; ctx.fillStyle = C.dim;
-    ctx.fillText("DISCARDED", sx0, L.slateY - 8);
+    ctx.fillText("DISCARDED", sx0, L.slateY - 9);
     ctx.textAlign = "right";
     ctx.fillStyle = frac > 0.4 ? C.gold : C.dim;
-    ctx.fillText(`${lost.toLocaleString()}  ·  ${(frac * 100).toFixed(0)}%`, sx0 + L.slateW, L.slateY - 8);
+    ctx.fillText(`${lost.toLocaleString()}  ·  ${(frac * 100).toFixed(0)}%`, sx0 + L.slateW, L.slateY - 9);
     ctx.textAlign = "left";
 
     roundRect(ctx, sx0, L.slateY, L.slateW, SLATE_H, 6);
@@ -616,12 +617,12 @@ export default function PhotonAccumulation() {
     }
     ctx.globalAlpha = 1;
 
-    ctx.font = "500 8.5px ui-monospace, Menlo, monospace";
-    ctx.fillStyle = "rgba(102,118,143,0.85)"; ctx.textAlign = "center";
+    ctx.font = "500 10.5px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "rgba(112,129,156,0.9)"; ctx.textAlign = "center";
     ctx.fillText(
       scale === 1 ? "one socket = one photon · full slate = whole run"
         : `one socket = ${scale.toLocaleString()} photons`,
-      sx0 + L.slateW / 2, L.slateY + SLATE_H + 12
+      sx0 + L.slateW / 2, L.slateY + SLATE_H + 14
     );
     ctx.textAlign = "left";
   }
@@ -664,7 +665,7 @@ export default function PhotonAccumulation() {
               style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               How it works
             </button>
-            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.23</span>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.24</span>
           </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
@@ -710,10 +711,20 @@ export default function PhotonAccumulation() {
 
         {M.monoSeq && (
           <div style={{ marginTop: 10, border: `1px solid ${C.edge}`, borderRadius: 12, padding: "11px 14px", background: C.panel }}>
-            <ScheduleBar label="MONO" segs={monoSegs} active={monoIdx} done={ui.done} />
-            <div style={{ height: 7 }} />
-            <ScheduleBar label="OSC" segs={oscSegs} active={oscIdx} done={ui.done} />
-            <div style={{ marginTop: 8, fontFamily: "ui-monospace, Menlo, monospace", fontSize: 9.5, color: ui.done ? C.gold : C.dim, letterSpacing: "0.07em" }}>
+            <div style={{ position: "relative" }}>
+              <ScheduleBar label="MONO" segs={monoSegs} active={monoIdx} done={ui.done} />
+              <div style={{ height: 9 }} />
+              <ScheduleBar label="OSC" segs={oscSegs} active={oscIdx} done={ui.done} />
+              <div style={{
+                position: "absolute", top: -4, bottom: -4, width: 2,
+                left: `calc(44px + (100% - 128px) * ${Math.min(1, ui.pos / budget)})`,
+                background: C.gold, borderRadius: 1, pointerEvents: "none",
+                boxShadow: "0 0 6px rgba(212,169,74,0.55)",
+              }}>
+                <div style={{ position: "absolute", top: -4, left: -2.5, width: 7, height: 7, borderRadius: 4, background: C.gold }} />
+              </div>
+            </div>
+            <div style={{ marginTop: 11, fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11, color: ui.done ? C.gold : C.dim, letterSpacing: "0.07em" }}>
               {ui.done
                 ? `RUN COMPLETE · ${budget.toLocaleString()} PHOTONS`
                 : `${ui.pos} / ${budget} PHOTONS · MONO ${monoSegs[monoIdx].name} · OSC ${oscSegs[oscIdx].name}`}
@@ -756,10 +767,10 @@ export default function PhotonAccumulation() {
                     <div style={{ fontSize: 13, fontWeight: 500, color: C.mid, marginTop: 4, letterSpacing: "0.01em" }}>
                       {live === 0 ? "collecting" : monoWins ? "faster on mono" : "faster on the OSC"}
                     </div>
-                    <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10, color: C.dim, marginTop: 5 }}>
+                    <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11.5, color: C.dim, marginTop: 6 }}>
                       converges to {(tgtMono ? tgt : 1 / tgt).toFixed(2)}× {tgtMono ? "mono" : "OSC"}
                     </div>
-                    <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10, color: C.dim, marginTop: 2 }}>
+                    <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11.5, color: C.dim, marginTop: 3 }}>
                       mono {mc.toLocaleString()} · osc {oc.toLocaleString()}
                     </div>
                   </div>
@@ -1058,8 +1069,8 @@ function Table({ head, body }) {
 function ScheduleBar({ label, segs, active, done }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 9.5, color: C.dim, letterSpacing: "0.1em", width: 34 }}>{label}</span>
-      <div style={{ flex: 1, display: "flex", gap: 3, height: 8 }}>
+      <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.dim, letterSpacing: "0.1em", width: 34 }}>{label}</span>
+      <div style={{ flex: 1, display: "flex", gap: 3, height: 10 }}>
         {segs.map((sg, i) => (
           <div key={i} title={sg.name} style={{
             flex: 1,
@@ -1071,7 +1082,7 @@ function ScheduleBar({ label, segs, active, done }) {
           }} />
         ))}
       </div>
-      <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 9.5, color: done ? C.dim : C.mid, width: 74, textAlign: "right" }}>
+      <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11, color: done ? C.dim : C.mid, width: 74, textAlign: "right" }}>
         {segs[active].name}
       </span>
     </div>
@@ -1140,9 +1151,9 @@ function Seg({ options, value, onChange }) {
 function Stat({ label, value, sub, tone }) {
   return (
     <div style={{ border: `1px solid ${C.edge}`, borderRadius: 12, padding: "10px 12px", background: C.panel }}>
-      <div style={{ fontSize: 9.5, color: C.dim, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "ui-monospace, Menlo, monospace", marginBottom: 5, lineHeight: 1.3 }}>{label}</div>
-      <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 20, fontWeight: 600, color: tone || C.text, lineHeight: 1.1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 10.5, color: C.dim, marginTop: 3, fontFamily: "ui-monospace, Menlo, monospace" }}>{sub}</div>}
+      <div style={{ fontSize: 10.5, color: C.dim, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "ui-monospace, Menlo, monospace", marginBottom: 5, lineHeight: 1.3 }}>{label}</div>
+      <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 21, fontWeight: 600, color: tone || C.text, lineHeight: 1.1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: C.mid, marginTop: 4, fontFamily: "ui-monospace, Menlo, monospace" }}>{sub}</div>}
     </div>
   );
 }
