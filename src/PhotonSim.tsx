@@ -178,6 +178,9 @@ function freshSim(nb, ol = 1) {
     monoTot: 0, oscTot: 0, delivered: 0,
     monoLost: 0, oscLost: 0, oscSlabLost: 0, contDelivered: 0,
     deliveredBand: new Array(nb).fill(0),
+    /* every mono capture, attributed to the colour of the photon rather
+       than to the filter that happened to be mounted */
+    monoAllBand: new Array(nb).fill(0),
     monoLostBand: new Array(nb).fill(0),
     oscSlabBand: new Array(nb).fill(0),
     /* band x mounted filter, so a loss can name the filter that caused it */
@@ -252,7 +255,7 @@ export default function PhotonAccumulation() {
     monoLost: 0, oscLost: 0, oscSlabLost: 0, contDelivered: 0,
     monoLostBand: [0, 0, 0], oscSlabBand: [0, 0, 0],
     oscDyeBand: [0, 0, 0], oscPartBand: [0, 0, 0],
-    deliveredBand: [0, 0, 0], monoLostBy: [], oscSlabBy: [],
+    deliveredBand: [0, 0, 0], monoAllBand: [0, 0, 0], monoLostBy: [], oscSlabBy: [],
     pos: 0, done: false, filter: null, oscFilter: null,
   });
 
@@ -273,7 +276,7 @@ export default function PhotonAccumulation() {
       delivered: 0, monoTot: 0, oscTot: 0, monoAll: 0,
       monoBand: new Array(nb).fill(0), oscBand: new Array(nb).fill(0),
       monoLost: 0, oscLost: 0, oscSlabLost: 0, contDelivered: 0,
-      deliveredBand: new Array(nb).fill(0),
+      deliveredBand: new Array(nb).fill(0), monoAllBand: new Array(nb).fill(0),
       monoLostBand: new Array(nb).fill(0),
       oscSlabBand: new Array(nb).fill(0),
       oscDyeBand: new Array(nb).fill(0), oscPartBand: new Array(nb).fill(0),
@@ -304,8 +307,8 @@ export default function PhotonAccumulation() {
       const bc = bandCol(M, band);
       s.deliveredBand[band]++;
       const oi = idxAt(M.oscSeq, s.pos - 1, budgetOf(m));
-      if (mf === null) { s.mono[px]++; s.monoAll++; s.monoTot++; }
-      else if (mf === band) { s.mono[px]++; s.monoBand[band]++; s.monoTot++; }
+      if (mf === null) { s.mono[px]++; s.monoAll++; s.monoTot++; s.monoAllBand[band]++; }
+      else if (mf === band) { s.mono[px]++; s.monoBand[band]++; s.monoTot++; s.monoAllBand[band]++; }
       else {
         pushQ(s.monoQ, bc); s.monoLost++; s.monoLostBand[band]++;
         s.monoLostBy[band][mf]++;
@@ -399,7 +402,8 @@ export default function PhotonAccumulation() {
             if (p.ok) {
               if (p.side === 0) {
                 s.mono[p.px]++; s.monoTot++; s.monoFlash[p.px] = 1;
-                if (monoFilterAt(Math.max(0, s.pos - 1), m) === null) s.monoAll++;
+                if (!p.cont) s.monoAllBand[p.band]++;
+                if (p.mf === null) s.monoAll++;
                 else s.monoBand[p.band]++;
               } else {
                 s.osc[p.px]++; s.oscBand[p.band]++; s.oscTot++; s.oscFlash[p.px] = 1;
@@ -528,7 +532,7 @@ export default function PhotonAccumulation() {
           monoLostBand: [...s.monoLostBand],
           oscSlabBand: [...s.oscSlabBand],
           oscDyeBand: [...s.oscDyeBand], oscPartBand: [...s.oscPartBand],
-          deliveredBand: [...s.deliveredBand],
+          deliveredBand: [...s.deliveredBand], monoAllBand: [...s.monoAllBand],
           monoLostBy: s.monoLostBy.map((r) => [...r]),
           oscSlabBy: s.oscSlabBy.map((r) => [...r]),
           pos: Math.min(s.pos, budget), done: s.done, filter: mf, oscFilter: of,
@@ -710,23 +714,32 @@ export default function PhotonAccumulation() {
     ...M.bands.map((b, i) => ({ label: b.name, color: bandCol(M, i), value: dBand[i] || 0 })),
     ...(isNB ? [{ label: "sky", color: C.dim, value: ui.contDelivered || 0 }] : []),
   ];
-  const monoRows = [
-    ...(isNB ? [] : [{ label: "L", color: C.bright, value: ui.monoAll || 0 }]),
-    ...M.bands.map((b, i) => ({
-      label: b.name, color: bandCol(M, i),
-      value: ui.monoBand[i] || 0, pct: pctOf(ui.monoBand[i], i),
-    })),
-  ];
+  const mAll = ui.monoAllBand || [];
+  const monoRows = M.bands.map((b, i) => ({
+    label: b.name, color: bandCol(M, i),
+    value: mAll[i] || 0, pct: pctOf(mAll[i], i),
+  }));
   const oscRows = M.bands.map((b, i) => ({
     label: b.name, color: bandCol(M, i),
     value: ui.oscBand[i] || 0, pct: pctOf(ui.oscBand[i], i),
   }));
 
-  const barMax = Math.max(
-    1, ui.monoAll || 0,
-    ...M.bands.map((_, i) => ui.monoBand[i] || 0),
-    ...M.bands.map((_, i) => ui.oscBand[i] || 0)
-  );
+  /* Bars run on one fixed scale shared by both sensors, anchored to where
+     the largest row will finish. Nothing is renormalised as counts grow, so
+     bar length is an absolute count and the two cards are directly
+     comparable by eye. Stochastic rows get 4 sigma of headroom, because a
+     count of 78 routinely lands at 84 and must not clip. */
+  const bandDeliv = (budget * (1 - (M.cont || 0))) / M.bands.length;
+  const lBlocks = seq.filter((f) => f === null).length;
+  const headroom = (e) => e + 4 * Math.sqrt(Math.max(0, e));
+  const barMax = niceCeil(Math.max(
+    1,
+    /* mono's L tally is deterministic: every photon in an L block is kept */
+    isNB ? 0 : (budget * lBlocks) / Math.max(1, seq.length),
+    isNB ? 0 : headroom(exp.osc * budget),
+    ...M.bands.map((_, i) =>
+      headroom(Math.max(exp.monoBand[i], exp.oscBand[i]) * bandDeliv))
+  ));
 
   return (
     <div style={{ background: C.bg, color: C.text, minHeight: "100%", padding: "18px 16px 26px", fontFamily: "ui-sans-serif, -apple-system, 'Helvetica Neue', Arial, sans-serif" }}>
@@ -738,7 +751,7 @@ export default function PhotonAccumulation() {
               style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               How it works
             </button>
-            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.31</span>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.35</span>
           </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
@@ -896,7 +909,7 @@ export default function PhotonAccumulation() {
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 10, marginTop: 10 }}>
-          <Card title="MONO — WHAT IT COLLECTED">
+          <Card title="MONO — WHAT IT COLLECTED" sub={`full bar = ${Math.round(barMax).toLocaleString()} electrons`}>
             {!isNB && <Row label="L" color={C.bright} value={ui.monoAll} max={barMax} />}
             {M.bands.map((b, i) => <Row key={i} label={b.name} color={bandCol(M, i)} value={ui.monoBand[i]} max={barMax} />)}
             <Total label="Total electrons" value={ui.monoTot} />
@@ -911,7 +924,7 @@ export default function PhotonAccumulation() {
             </Note>
           </Card>
 
-          <Card title="OSC — WHAT IT COLLECTED">
+          <Card title="OSC — WHAT IT COLLECTED" sub={`full bar = ${Math.round(barMax).toLocaleString()} electrons`}>
             {M.bands.map((b, i) => <Row key={i} label={b.name} color={bandCol(M, i)} value={ui.oscBand[i]} max={barMax} />)}
             {!isNB && <Row label="L" color={C.dim} value={ui.oscTot} max={barMax} ghost />}
             <Total label="Total electrons" value={ui.oscTot} />
@@ -1338,10 +1351,13 @@ function Fate({ n, label, tone, indent }) {
 function Tag({ children }) {
   return <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 9.5, color: C.dim, letterSpacing: "0.1em", textTransform: "uppercase" }}>{children}</span>;
 }
-function Card({ title, children }) {
+function Card({ title, sub, children }) {
   return (
     <div style={{ border: `1px solid ${C.edge}`, borderRadius: 12, padding: "12px 14px", background: C.panel }}>
-      <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10, color: C.dim, letterSpacing: "0.09em", marginBottom: 10 }}>{title}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.dim, letterSpacing: "0.09em" }}>{title}</span>
+        {sub && <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10, color: "rgba(102,118,143,0.8)" }}>{sub}</span>}
+      </div>
       {children}
     </div>
   );
@@ -1437,6 +1453,15 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, rr);
   ctx.closePath();
 }
+/* round up to a readable step, finely enough not to waste bar width */
+const NICE = [1, 1.1, 1.2, 1.5, 1.8, 2, 2.5, 3, 4, 5, 6, 8, 10];
+function niceCeil(v) {
+  if (!isFinite(v) || v <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const f = v / mag;
+  return Math.round((NICE.find((k) => f <= k + 1e-9) || 10) * mag);
+}
+
 function hexRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
