@@ -177,6 +177,7 @@ function freshSim(nb, ol = 1) {
     monoFlash: [0, 0, 0, 0], oscFlash: [0, 0, 0, 0],
     monoTot: 0, oscTot: 0, delivered: 0,
     monoLost: 0, oscLost: 0, oscSlabLost: 0, contDelivered: 0,
+    deliveredBand: new Array(nb).fill(0),
     monoLostBand: new Array(nb).fill(0),
     oscSlabBand: new Array(nb).fill(0),
     /* band x mounted filter, so a loss can name the filter that caused it */
@@ -251,7 +252,7 @@ export default function PhotonAccumulation() {
     monoLost: 0, oscLost: 0, oscSlabLost: 0, contDelivered: 0,
     monoLostBand: [0, 0, 0], oscSlabBand: [0, 0, 0],
     oscDyeBand: [0, 0, 0], oscPartBand: [0, 0, 0],
-    monoLostBy: [], oscSlabBy: [],
+    deliveredBand: [0, 0, 0], monoLostBy: [], oscSlabBy: [],
     pos: 0, done: false, filter: null, oscFilter: null,
   });
 
@@ -272,6 +273,7 @@ export default function PhotonAccumulation() {
       delivered: 0, monoTot: 0, oscTot: 0, monoAll: 0,
       monoBand: new Array(nb).fill(0), oscBand: new Array(nb).fill(0),
       monoLost: 0, oscLost: 0, oscSlabLost: 0, contDelivered: 0,
+      deliveredBand: new Array(nb).fill(0),
       monoLostBand: new Array(nb).fill(0),
       oscSlabBand: new Array(nb).fill(0),
       oscDyeBand: new Array(nb).fill(0), oscPartBand: new Array(nb).fill(0),
@@ -300,6 +302,7 @@ export default function PhotonAccumulation() {
       }
       const band = (Math.random() * nb) | 0;
       const bc = bandCol(M, band);
+      s.deliveredBand[band]++;
       const oi = idxAt(M.oscSeq, s.pos - 1, budgetOf(m));
       if (mf === null) { s.mono[px]++; s.monoAll++; s.monoTot++; }
       else if (mf === band) { s.mono[px]++; s.monoBand[band]++; s.monoTot++; }
@@ -362,7 +365,7 @@ export default function PhotonAccumulation() {
           const oPasses = !cont && (of === null || of.includes(band));
           const oResp = cont ? 0 : M.resp[DYE[px]][band];
           const oPixel = oPasses && Math.random() < oResp;
-          if (cont) s.contDelivered++;
+          if (cont) s.contDelivered++; else s.deliveredBand[band]++;
           for (const side of [0, 1]) {
             const base = side === 0 ? L.monoPX : L.oscPX;
             const a = L.apex(base), c = L.center(base, px);
@@ -525,6 +528,7 @@ export default function PhotonAccumulation() {
           monoLostBand: [...s.monoLostBand],
           oscSlabBand: [...s.oscSlabBand],
           oscDyeBand: [...s.oscDyeBand], oscPartBand: [...s.oscPartBand],
+          deliveredBand: [...s.deliveredBand],
           monoLostBy: s.monoLostBy.map((r) => [...r]),
           oscSlabBy: s.oscSlabBy.map((r) => [...r]),
           pos: Math.min(s.pos, budget), done: s.done, filter: mf, oscFilter: of,
@@ -700,6 +704,24 @@ export default function PhotonAccumulation() {
     : [{ name: "UV/IR cut", cols: ["#5B6B85"] }];
   const monoIdx = Math.min(monoSegs.length - 1, Math.floor((ui.pos / budget) * monoSegs.length));
   const oscIdx = Math.min(oscSegs.length - 1, Math.floor((ui.pos / budget) * oscSegs.length));
+  const dBand = ui.deliveredBand || [];
+  const pctOf = (v, i) => (dBand[i] > 0 ? ((v || 0) / dBand[i]) * 100 : null);
+  const delRows = [
+    ...M.bands.map((b, i) => ({ label: b.name, color: bandCol(M, i), value: dBand[i] || 0 })),
+    ...(isNB ? [{ label: "sky", color: C.dim, value: ui.contDelivered || 0 }] : []),
+  ];
+  const monoRows = [
+    ...(isNB ? [] : [{ label: "L", color: C.bright, value: ui.monoAll || 0 }]),
+    ...M.bands.map((b, i) => ({
+      label: b.name, color: bandCol(M, i),
+      value: ui.monoBand[i] || 0, pct: pctOf(ui.monoBand[i], i),
+    })),
+  ];
+  const oscRows = M.bands.map((b, i) => ({
+    label: b.name, color: bandCol(M, i),
+    value: ui.oscBand[i] || 0, pct: pctOf(ui.oscBand[i], i),
+  }));
+
   const barMax = Math.max(
     1, ui.monoAll || 0,
     ...M.bands.map((_, i) => ui.monoBand[i] || 0),
@@ -716,7 +738,7 @@ export default function PhotonAccumulation() {
               style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               How it works
             </button>
-            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.29</span>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.31</span>
           </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
@@ -783,10 +805,10 @@ export default function PhotonAccumulation() {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 10, marginTop: 12 }}>
-          <Stat label="Photons delivered" value={ui.delivered.toLocaleString()} />
-          <Stat label="Mono electrons" value={ui.monoTot.toLocaleString()} sub={`${((ui.monoTot / N) * 100).toFixed(1)}% kept`} tone={C.bright} />
-          <Stat label="OSC electrons" value={ui.oscTot.toLocaleString()} sub={`${((ui.oscTot / N) * 100).toFixed(1)}% kept`} tone="#8FA6C8" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(186px, 1fr))", gap: 10, marginTop: 12 }}>
+          <Stat label="Photons delivered" value={ui.delivered.toLocaleString()} rows={delRows} />
+          <Stat label="Mono electrons" value={ui.monoTot.toLocaleString()} sub={`${((ui.monoTot / N) * 100).toFixed(1)}% kept`} tone={C.bright} rows={monoRows} />
+          <Stat label="OSC electrons" value={ui.oscTot.toLocaleString()} sub={`${((ui.oscTot / N) * 100).toFixed(1)}% kept`} tone="#8FA6C8" rows={oscRows} />
           <Stat label="Photon ratio = time advantage" value={ratio ? `${ratio.toFixed(2)}×` : "—"} sub={`converges to ${exp.ratio.toFixed(2)}×`} tone={C.gold} />
           <Stat label="SNR advantage" value={snr ? `${snr.toFixed(2)}×` : "—"} sub="= √(photon ratio)" tone={C.gold} />
           {isNB && (
@@ -829,6 +851,8 @@ export default function PhotonAccumulation() {
                       converges to {(tgtMono ? tgt : 1 / tgt).toFixed(2)}× {tgtMono ? "mono" : "OSC"}
                     </div>
                     <div style={{ borderTop: `1px solid ${C.edge}`, marginTop: 8, paddingTop: 7, fontSize: 11.5, lineHeight: 1.6 }}>
+                      <Fate n={ui.deliveredBand[i] || 0} label={`${b.name} photons delivered`} tone={C.bright} />
+                      <div style={{ borderTop: `1px solid ${C.edge}`, margin: "6px 0 7px" }} />
                       <Fate n={mc} label="recorded by mono" tone={C.mid} />
                       {(ui.monoLostBand[i] || 0) > 0 && (
                         <>
@@ -1370,12 +1394,23 @@ function Seg({ options, value, onChange }) {
     </div>
   );
 }
-function Stat({ label, value, sub, tone }) {
+function Stat({ label, value, sub, tone, rows }) {
   return (
     <div style={{ border: `1px solid ${C.edge}`, borderRadius: 12, padding: "10px 12px", background: C.panel }}>
       <div style={{ fontSize: 10.5, color: C.dim, letterSpacing: "0.07em", textTransform: "uppercase", fontFamily: "ui-monospace, Menlo, monospace", marginBottom: 5, lineHeight: 1.3 }}>{label}</div>
       <div style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 21, fontWeight: 600, color: tone || C.text, lineHeight: 1.1 }}>{value}</div>
       {sub && <div style={{ fontSize: 12, color: C.mid, marginTop: 4, fontFamily: "ui-monospace, Menlo, monospace" }}>{sub}</div>}
+      {rows && rows.length > 0 && (
+        <div style={{ marginTop: 9, borderTop: `1px solid ${C.edge}`, paddingTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+          {rows.map((r, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 7, fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11.5 }}>
+              <span style={{ color: r.color, fontWeight: 700, minWidth: 34 }}>{r.label}</span>
+              <span style={{ color: C.text }}>{(r.value || 0).toLocaleString()}</span>
+              {r.pct != null && <span style={{ color: C.dim }}>{r.pct.toFixed(0)}% kept</span>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
