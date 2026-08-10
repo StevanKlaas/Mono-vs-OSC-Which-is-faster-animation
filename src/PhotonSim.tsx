@@ -195,42 +195,48 @@ function freshSim(nb, ol = 1) {
 /* ---------------- layout ---------------- */
 
 function makeLayout(W, H, budget) {
-  const cell = Math.round(Math.max(60, Math.min(150, W * 0.155)));
+  const cell = Math.round(Math.max(52, Math.min(146, W * 0.142)));
   const gap = Math.round(cell * 0.09);
   const gw = cell * 2 + gap, gh = cell * 2 + gap;
-  const panelW = Math.round(gw + cell * 0.5);
-  const panelGap = Math.round(cell * 0.28);
+
+  /* the slate is a tall column on the outer edge of each panel:
+     left of mono, right of the OSC, so the two sensors mirror */
+  const slateW = Math.round(Math.max(30, Math.min(56, cell * 0.38)));
+  const slatePad = 14;
+  const slateGap = Math.round(cell * 0.13);
+  const panelW = Math.round(gw + slateW + slateGap + slatePad * 2);
+  const panelGap = Math.round(cell * 0.26);
 
   const labelY = 22, badgeY = 42, panelTop = 58;
   const apexY = panelTop + 34;
-  const gridTop = apexY + Math.round(cell * 0.8);
+  const gridTop = apexY + Math.round(cell * 0.86);
   const filterY = apexY + (gridTop - apexY) * 0.56;
-  const slateY = gridTop + gh + 34;
-  const slatePad = 14;
-  const panelH = slateY + SLATE_H + 30 - panelTop;
+  const panelH = gridTop + gh + 42 - panelTop;
 
   const monoPX = Math.round(W / 2 - panelGap / 2 - panelW);
   const oscPX = Math.round(W / 2 + panelGap / 2);
 
-  const gridX = (px) => px + (panelW - gw) / 2;
-  const center = (px, i) => ({
-    x: gridX(px) + (i % 2) * (cell + gap) + cell / 2,
+  const gridX = (px, isMono) =>
+    isMono ? px + slatePad + slateW + slateGap : px + slatePad;
+  const slateX = (px, isMono) =>
+    isMono ? px + slatePad : px + panelW - slatePad - slateW;
+  const center = (px, i, isMono) => ({
+    x: gridX(px, isMono) + (i % 2) * (cell + gap) + cell / 2,
     y: gridTop + ((i / 2) | 0) * (cell + gap) + cell / 2,
   });
-  const apex = (px) => ({ x: px + panelW / 2, y: apexY });
+  const apex = (px, isMono) => ({ x: gridX(px, isMono) + gw / 2, y: apexY });
 
-  const slateW = panelW - slatePad * 2;
-  const sg = slateGrid(budget, slateW, SLATE_H);
-  const slateSlot = (px, slot) => ({
-    x: px + slatePad + (((slot % sg.cols) + 0.5) * slateW) / sg.cols,
-    y: slateY + SLATE_H - ((Math.floor(slot / sg.cols) + 0.5) * SLATE_H) / sg.rows,
+  const sg = slateGrid(budget, slateW, gh);
+  const slateSlot = (px, isMono, slot) => ({
+    x: slateX(px, isMono) + (((slot % sg.cols) + 0.5) * slateW) / sg.cols,
+    y: gridTop + gh - ((Math.floor(slot / sg.cols) + 0.5) * gh) / sg.rows,
   });
 
   return {
     cell, gap, gw, gh, panelW, panelH, panelTop, labelY, badgeY,
-    apexY, gridTop, filterY, slateY, monoPX, oscPX, gridX, center, apex,
-    slatePad, slateW, slateCap: sg.cols * sg.rows, slateSlot,
-    dotR: Math.max(0.85, Math.min(slateW / sg.cols, SLATE_H / sg.rows) * 0.34),
+    apexY, gridTop, filterY, monoPX, oscPX, gridX, slateX, center, apex,
+    slatePad, slateW, slateGap, slateCap: sg.cols * sg.rows, slateSlot,
+    dotR: Math.max(0.8, Math.min(slateW / sg.cols, gh / sg.rows) * 0.34),
   };
 }
 
@@ -371,7 +377,7 @@ export default function PhotonAccumulation() {
           if (cont) s.contDelivered++; else s.deliveredBand[band]++;
           for (const side of [0, 1]) {
             const base = side === 0 ? L.monoPX : L.oscPX;
-            const a = L.apex(base), c = L.center(base, px);
+            const a = L.apex(base, side === 0), c = L.center(base, px, side === 0);
             const tx = c.x + jx, ty = c.y + jy;
             const ok = cont ? false
               : side === 0 ? mf === null || mf === band : oPixel;
@@ -428,7 +434,8 @@ export default function PhotonAccumulation() {
               }
             }
             const pile = p.side === 0 ? s.monoSlate : s.oscSlate;
-            const dest = L.slateSlot(p.side === 0 ? L.monoPX : L.oscPX,
+            const dest = L.slateSlot(
+              p.side === 0 ? L.monoPX : L.oscPX, p.side === 0,
               Math.min(L.slateCap - 1, pile.length));
             p.x0 = p.x; p.y0 = p.y; p.sx = dest.x; p.sy = dest.y; p.t2 = 0;
           } else {
@@ -472,7 +479,8 @@ export default function PhotonAccumulation() {
       const inbound = new Set();
       for (const p of s.photons) if (p.phase === 0) inbound.add(p.side * 4 + p.px);
       for (const k of inbound) {
-        const c = L.center((k / 4 | 0) === 0 ? L.monoPX : L.oscPX, k % 4);
+        const isM = (k / 4 | 0) === 0;
+        const c = L.center(isM ? L.monoPX : L.oscPX, k % 4, isM);
         ctx.strokeStyle = "rgba(212,169,74,0.30)";
         ctx.lineWidth = 1.4;
         roundRect(ctx, c.x - L.cell / 2, c.y - L.cell / 2, L.cell, L.cell, 7);
@@ -551,7 +559,7 @@ export default function PhotonAccumulation() {
     const flash = isMono ? s.monoFlash : s.oscFlash;
     const lost = isMono ? s.monoLost : s.oscLost;
     const midX = px + L.panelW / 2;
-    const ap = L.apex(px);
+    const ap = L.apex(px, isMono);
     const isNB = M.group === "nb";
 
     ctx.textAlign = "center";
@@ -575,7 +583,7 @@ export default function PhotonAccumulation() {
     ctx.strokeStyle = C.edge; ctx.lineWidth = 1; ctx.stroke();
 
     for (let i = 0; i < 4; i++) {
-      const c = L.center(px, i);
+      const c = L.center(px, i, isMono);
       ctx.strokeStyle = "rgba(130,162,214,0.22)"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(ap.x, ap.y); ctx.lineTo(c.x, c.y); ctx.stroke();
     }
@@ -590,7 +598,7 @@ export default function PhotonAccumulation() {
 
     /* the slab: mono always has one; the OSC only in narrowband */
     if (isMono || isNB) {
-      const gx = L.gridX(px);
+      const gx = L.gridX(px, isMono);
       const sw = L.gw + 22, sxx = gx - 11, sy = L.filterY - 7;
       const cols = fBands ? fBands.map((b) => bandCol(M, b)) : ["#E8EEF9"];
       const pl = s.pulse;
@@ -623,7 +631,7 @@ export default function PhotonAccumulation() {
     /* cells — the dye is always RGGB, whatever light is arriving */
     const numSize = Math.round(L.cell * 0.32);
     for (let i = 0; i < 4; i++) {
-      const c = L.center(px, i), n = counts[i];
+      const c = L.center(px, i, isMono), n = counts[i];
       const b = 1 - Math.exp(-n / 40);
       const base = isMono ? [232, 238, 249] : hexRgb(DYE_COL[DYE[i]]);
       const x = c.x - L.cell / 2, y = c.y - L.cell / 2;
@@ -646,18 +654,20 @@ export default function PhotonAccumulation() {
       ctx.textBaseline = "alphabetic";
     }
 
-    /* slate */
+    /* slate: a tall column on the outer edge */
     const frac = s.delivered ? lost / s.delivered : 0;
-    const sx0 = px + L.slatePad;
-    ctx.font = "600 12px ui-monospace, Menlo, monospace";
-    ctx.textAlign = "left"; ctx.fillStyle = C.dim;
-    ctx.fillText("DISCARDED", sx0, L.slateY - 9);
-    ctx.textAlign = "right";
-    ctx.fillStyle = frac > 0.4 ? C.gold : C.dim;
-    ctx.fillText(`${lost.toLocaleString()}  ·  ${(frac * 100).toFixed(0)}%`, sx0 + L.slateW, L.slateY - 9);
-    ctx.textAlign = "left";
+    const sx0 = L.slateX(px, isMono);
+    const scx = sx0 + L.slateW / 2;
 
-    roundRect(ctx, sx0, L.slateY, L.slateW, SLATE_H, 6);
+    ctx.textAlign = "center";
+    ctx.font = "600 10px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = C.dim;
+    lsText(ctx, "DISCARDED", scx, L.gridTop - 25, 0.8);
+    ctx.font = "600 12px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = frac > 0.4 ? C.gold : C.dim;
+    ctx.fillText(`${lost.toLocaleString()} · ${(frac * 100).toFixed(0)}%`, scx, L.gridTop - 9);
+
+    roundRect(ctx, sx0, L.gridTop, L.slateW, L.gh, 6);
     ctx.fillStyle = "#0A101C"; ctx.fill();
     ctx.strokeStyle = C.edge; ctx.lineWidth = 1; ctx.stroke();
 
@@ -665,12 +675,12 @@ export default function PhotonAccumulation() {
     const slots = Math.min(L.slateCap, Math.round(s.delivered / scale));
     ctx.fillStyle = "rgba(108,126,156,0.26)";
     for (let k = slate.length; k < slots; k++) {
-      const pos = L.slateSlot(px, k);
+      const pos = L.slateSlot(px, isMono, k);
       ctx.beginPath(); ctx.arc(pos.x, pos.y, L.dotR * 0.62, 0, 6.2832); ctx.fill();
     }
     ctx.globalAlpha = 0.62;
     for (let k = 0; k < Math.min(slate.length, L.slateCap); k++) {
-      const pos = L.slateSlot(px, k);
+      const pos = L.slateSlot(px, isMono, k);
       ctx.fillStyle = slate[k];
       ctx.beginPath(); ctx.arc(pos.x, pos.y, L.dotR, 0, 6.2832); ctx.fill();
     }
@@ -681,7 +691,7 @@ export default function PhotonAccumulation() {
     ctx.fillText(
       scale === 1 ? "one socket = one photon · full slate = whole run"
         : `one socket = ${scale.toLocaleString()} photons`,
-      sx0 + L.slateW / 2, L.slateY + SLATE_H + 14
+      px + L.panelW / 2, L.gridTop + L.gh + 26
     );
     ctx.textAlign = "left";
   }
@@ -751,7 +761,7 @@ export default function PhotonAccumulation() {
               style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               How it works
             </button>
-            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.35</span>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.36</span>
           </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
