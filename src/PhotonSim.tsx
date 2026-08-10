@@ -54,6 +54,49 @@ const LINE_WHY = {
   "SII": "Red pixels only, exactly like Hα — and indistinguishable from it there. Only the filter in front can separate the two.",
 };
 
+/* Relative photon flux at the three lines for real targets. SII is the
+   6717+6731 doublet. These are representative rather than measured: line
+   ratios vary strongly within a single nebula, M42 most of all. */
+const TARGETS = [
+  { k: "equal", g: "Reference", label: "Equal mix", mix: [1, 1, 1] },
+
+  { k: "ic1396", g: "Emission nebulae", label: "IC 1396 Elephant's Trunk", mix: [100, 10, 22] },
+  { k: "sh2155", g: "Emission nebulae", label: "Sh2-155 Cave", mix: [100, 12, 22] },
+  { k: "ngc7000", g: "Emission nebulae", label: "NGC 7000 North America", mix: [100, 12, 20] },
+  { k: "ic1805", g: "Emission nebulae", label: "IC 1805 Heart", mix: [100, 15, 20] },
+  { k: "sh2129", g: "Emission nebulae", label: "Sh2-129 + Ou4 field", mix: [100, 18, 12] },
+  { k: "m16", g: "Emission nebulae", label: "M16 Eagle", mix: [100, 25, 18] },
+  { k: "rosette", g: "Emission nebulae", label: "NGC 2237 Rosette", mix: [100, 30, 20] },
+  { k: "m8", g: "Emission nebulae", label: "M8 Lagoon", mix: [100, 40, 15] },
+  { k: "bubble", g: "Emission nebulae", label: "NGC 7635 Bubble", mix: [100, 45, 15] },
+  { k: "crescent", g: "Emission nebulae", label: "NGC 6888 Crescent", mix: [100, 55, 12] },
+  { k: "veil", g: "Emission nebulae", label: "Veil NGC 6992 (remnant)", mix: [100, 70, 55] },
+  { k: "m42", g: "Emission nebulae", label: "M42 Orion core", mix: [100, 90, 12] },
+
+  { k: "helix", g: "Planetary nebulae", label: "NGC 7293 Helix", mix: [100, 120, 25] },
+  { k: "ngc6781", g: "Planetary nebulae", label: "NGC 6781", mix: [100, 150, 20] },
+  { k: "m27", g: "Planetary nebulae", label: "M27 Dumbbell", mix: [100, 350, 8] },
+  { k: "m57", g: "Planetary nebulae", label: "M57 Ring", mix: [100, 400, 10] },
+  { k: "cateye", g: "Planetary nebulae", label: "NGC 6543 Cat's Eye", mix: [100, 450, 5] },
+  { k: "saturn", g: "Planetary nebulae", label: "NGC 7009 Saturn", mix: [100, 500, 5] },
+  { k: "ou4", g: "Planetary nebulae", label: "Ou4 Giant Squid alone", mix: [1, 100, 1] },
+];
+const TARGET = Object.fromEntries(TARGETS.map((t) => [t.k, t]));
+const UNIFORM = [1, 1, 1];
+
+/* weights over just the bands this scenario uses, renormalised */
+function mixWeights(M, mix) {
+  const nb = M.bands.length;
+  const w = mix.slice(0, nb);
+  const tot = w.reduce((a, b) => a + b, 0) || 1;
+  return w.map((v) => v / tot);
+}
+function pickBand(w) {
+  let r = Math.random();
+  for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return i; }
+  return w.length - 1;
+}
+
 const BLOCK = 100;
 const SLATE_H = 44;
 const NOMINAL_BUDGET = 1100;
@@ -123,9 +166,10 @@ function arrayFrac(m, band) {
   return DYE.reduce((a, d) => a + R[d][band], 0) / 4;
 }
 /* analytic equilibrium fractions, used for the "converges to" captions */
-function expected(m) {
+function expected(m, mix) {
   const M = MODES[m];
   const nb = M.bands.length;
+  const w = mixWeights(M, mix || UNIFORM);
   const budget = budgetOf(m);
   const S = 1200; // fine sampling across the run
   let mono = 0, osc = 0;
@@ -137,8 +181,8 @@ function expected(m) {
     for (let k = 0; k < nb; k++) {
       const mOk = mf === null || mf === k ? 1 : 0;
       const oOk = of === null || of.includes(k) ? arrayFrac(m, k) : 0;
-      mono += mOk / (nb * S);
-      osc += oOk / (nb * S);
+      mono += (mOk * w[k]) / S;
+      osc += (oOk * w[k]) / S;
       monoBand[k] += mOk / S;
       oscBand[k] += oOk / S;
     }
@@ -253,6 +297,8 @@ export default function PhotonAccumulation() {
   const [speed, setSpeed] = useState(1);
   const [playing, setPlaying] = useState(true);
   const [docs, setDocs] = useState(false);
+  const [target, setTarget] = useState("equal");
+  const tgtRef = useRef(UNIFORM);
   const [caveats, setCaveats] = useState(false);
   const hubRef = useRef(false);
   const [ui, setUi] = useState({
@@ -268,6 +314,7 @@ export default function PhotonAccumulation() {
   useEffect(() => void (modeRef.current = mode), [mode]);
   useEffect(() => void (spdRef.current = SPEEDS[speed]), [speed]);
   useEffect(() => void (playRef.current = playing), [playing]);
+  useEffect(() => { tgtRef.current = TARGET[target].mix; }, [target]);
   useEffect(() => {
     const m = typeof window !== "undefined" && window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -309,7 +356,7 @@ export default function PhotonAccumulation() {
         pushQ(s.oscQ, c); s.oscLost++; s.oscSlabLost++;
         continue;
       }
-      const band = (Math.random() * nb) | 0;
+      const band = M.group === "nb" ? pickBand(mixWeights(M, tgtRef.current)) : (Math.random() * nb) | 0;
       const bc = bandCol(M, band);
       s.deliveredBand[band]++;
       const oi = idxAt(M.oscSeq, s.pos - 1, budgetOf(m));
@@ -364,7 +411,9 @@ export default function PhotonAccumulation() {
           s.acc -= 1;
           if (M.monoSeq && s.pos >= budget) { s.done = true; break; }
           const cont = Math.random() < (M.cont || 0);
-          const band = cont ? 0 : (Math.random() * nb) | 0;
+          const band = cont ? 0
+            : M.group === "nb" ? pickBand(mixWeights(M, tgtRef.current))
+            : (Math.random() * nb) | 0;
           const px = (Math.random() * 4) | 0;
           const mf = monoFilterAt(s.pos, m), of = oscFilterAt(s.pos, m);
           const jx = 0, jy = 0; // land dead centre, so the ray is the path
@@ -704,7 +753,9 @@ export default function PhotonAccumulation() {
   const N = ui.delivered || 1;
   const ratio = ui.oscTot > 0 ? ui.monoTot / ui.oscTot : 0;
   const snr = ratio > 0 ? Math.sqrt(ratio) : 0;
-  const exp = expected(mode);
+  const tgt = TARGET[target];
+  const exp = expected(mode, isNB ? tgt.mix : UNIFORM);
+  const wts = mixWeights(M, isNB ? tgt.mix : UNIFORM);
   const monoSegs = seq.length
     ? seq.map((f) => (f === null
         ? { name: "L", cols: [C.bright] }
@@ -739,7 +790,7 @@ export default function PhotonAccumulation() {
      bar length is an absolute count and the two cards are directly
      comparable by eye. Stochastic rows get 4 sigma of headroom, because a
      count of 78 routinely lands at 84 and must not clip. */
-  const bandDeliv = (budget * (1 - (M.cont || 0))) / M.bands.length;
+  const lineTotal = budget * (1 - (M.cont || 0));
   const lBlocks = seq.filter((f) => f === null).length;
   const headroom = (e) => e + 4 * Math.sqrt(Math.max(0, e));
   const barMax = niceCeil(Math.max(
@@ -748,7 +799,7 @@ export default function PhotonAccumulation() {
     isNB ? 0 : (budget * lBlocks) / Math.max(1, seq.length),
     isNB ? 0 : headroom(exp.osc * budget),
     ...M.bands.map((_, i) =>
-      headroom(Math.max(exp.monoBand[i], exp.oscBand[i]) * bandDeliv))
+      headroom(Math.max(exp.monoBand[i], exp.oscBand[i]) * lineTotal * wts[i]))
   ));
 
   return (
@@ -761,7 +812,7 @@ export default function PhotonAccumulation() {
               style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               How it works
             </button>
-            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.36</span>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.37</span>
           </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
@@ -791,6 +842,33 @@ export default function PhotonAccumulation() {
           <Seg options={ORDER_NB.map((k) => ({ k, label: MODES[k].label }))} value={mode}
             onChange={(k) => { setMode(k); reset(k); setPlaying(true); }} />
         </div>
+
+        {isNB && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+            <Tag>Target</Tag>
+            <select
+              value={target}
+              onChange={(e) => { setTarget(e.target.value); reset(); setPlaying(true); }}
+              style={{ background: C.panel, color: C.bright, border: `1px solid ${C.edgeHi}`, borderRadius: 8, padding: "7px 10px", fontSize: 12, fontFamily: "inherit", fontWeight: 600 }}
+            >
+              {["Reference", "Emission nebulae", "Planetary nebulae"].map((g) => (
+                <optgroup key={g} label={g}>
+                  {TARGETS.filter((t) => t.g === g).map((t) => (
+                    <option key={t.k} value={t.k}>{t.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11.5, color: C.dim }}>
+              Hα {tgt.mix[0]} · OIII {tgt.mix[1]}
+              {M.bands.length > 2 ? ` · SII ${tgt.mix[2]}` : ""}
+              {"  →  "}
+              <span style={{ color: exp.ratio >= 1 ? C.bright : "#8FA6C8", fontWeight: 700 }}>
+                {(exp.ratio >= 1 ? exp.ratio : 1 / exp.ratio).toFixed(2)}× {exp.ratio >= 1 ? "mono" : "OSC"}
+              </span>
+            </span>
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
           {ui.done
@@ -972,7 +1050,7 @@ function Docs({ onClose }) {
   }, [onClose]);
 
   const rows = ["lum", "s8", "s4", "s1", "s0", "hoo", "sho"].map((k) => {
-    const M = MODES[k], e = expected(k);
+    const M = MODES[k], e = expected(k, UNIFORM);
     return { k, label: M.label, nb: M.group === "nb", e, M };
   });
 
@@ -1216,9 +1294,20 @@ function Caveats({ onClose }) {
 
         <H>The line mix is equal, and no real target is</H>
         <P>
-          The run delivers Hα, OIII and SII in equal numbers. That is a modelling
-          convenience, not astronomy. A typical emission nebula is roughly 70% Hα,
-          20% OIII, 10% SII in photon terms.
+          By default the run delivers Hα, OIII and SII in equal numbers. That is a
+          modelling convenience, not astronomy — so the target selector above the
+          canvas lets you swap in the real line ratios of about twenty popular
+          objects, and the overall figure moves a long way when you do.
+        </P>
+        <P>
+          Emission nebulae are Hα-dominant and push the advantage toward mono:
+          IC 1396 reaches about 2.0× on SHO. Planetary nebulae are the opposite,
+          with OIII several times brighter than Hα, and they flip the overall
+          verdict to the colour camera — roughly 1.6× the OSC on M57 or M27, and
+          1.9× on Ou4 alone, which is essentially a pure OIII object. Per line
+          nothing changes at all: mono still wins Hα and SII 2.67× and still loses
+          OIII 1.95×. The mix only reweights how those combine, which is exactly
+          why the overall number was the wrong one to quote.
         </P>
         <P>
           Mono does not care about the mix — it captures a third of whatever
