@@ -812,7 +812,7 @@ export default function PhotonAccumulation() {
               style={{ background: C.gold, color: "#0A0E17", border: `1px solid ${C.gold}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
               How it works
             </button>
-            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.37</span>
+            <span style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 10.5, color: C.gold, border: `1px solid ${C.edgeHi}`, borderRadius: 999, padding: "3px 9px" }}>v0.38</span>
           </div>
         </div>
         <p style={{ color: C.dim, fontSize: 12.5, lineHeight: 1.55, margin: "6px 0 12px", maxWidth: 720 }}>
@@ -1095,12 +1095,21 @@ function Docs({ onClose }) {
         <UL items={[
           <>In the LRGB scenarios every photon is broadband, equally likely to be red, green or blue.</>,
           <>In the narrowband scenarios <B>70% of arriving photons are continuum and sky glow</B>, drawn small and plain in red, green and blue. The other 30% are emission line photons, drawn larger with a glow and carrying their letter — H, O or S — until they land.</>,
+          <>How that 30% divides between the lines is set by the <B>target selector</B>. The default splits it equally, which is convenient but unreal; the listed nebulae use their own line ratios, and the delivered counts per line go unequal to match.</>,
           <>The target pixel is chosen uniformly, so over a long run each of the four receives a quarter of the light.</>,
         ]} />
         <P>
           The speed control changes only how fast photons arrive. Slow is for
           watching one at a time; Sprint reaches the converged numbers quickly.
           <B> Finish session</B> jumps straight to the end of the run.
+        </P>
+        <P>
+          Each photon travels along one of four faint rays running from the
+          aperture to a pixel centre, and it follows that ray exactly — so its
+          destination is readable from the moment it appears, and the pixel it is
+          bound for lights up as it approaches. The gold line sliding across the
+          schedule bars is the playhead: it marks how far through the budget the
+          run has got, against both sensors' filter changes at once.
         </P>
 
         <H>The two places a photon can die</H>
@@ -1185,11 +1194,40 @@ function Docs({ onClose }) {
 
         <H>The slate</H>
         <P>
-          Beneath each sensor is a slate with exactly one socket for every photon
-          in the run's budget. A photon the sensor never recorded falls there and
-          stays, lit in its own colour; a photon that was recorded leaves its
-          socket empty. A completely full slate would mean nothing at all was
-          captured, so the lit fraction is literally the discard rate.
+          Each sensor has a slate: the tall column on the outer edge of its panel,
+          left of mono and right of the OSC so the two mirror each other. It holds
+          exactly one socket for every photon in the run's budget. A photon the
+          sensor never recorded falls there and stays, lit in its own colour; a
+          photon that was recorded leaves its socket empty. A completely full
+          slate would mean nothing at all was captured, so the lit fraction is
+          literally the discard rate, and the two columns can be compared at a
+          glance because they hold the same number of sockets.
+        </P>
+
+        <H>The two mono tables say different things</H>
+        <P>
+          <B>Mono electrons</B>, in the row of counters, breaks the tally down by
+          the <em>colour of the photon</em>. A red photon caught while the L
+          filter was mounted is still a red photon, so it is counted under R.
+          That is why mono shows about 82% kept on every channel at 8:1:1:1 — it
+          spends eight blocks in eleven catching everything, plus one more block
+          on that colour specifically.
+        </P>
+        <P>
+          <B>Mono — what it collected</B>, lower down, breaks the same electrons
+          down by <em>which frame they landed in</em>: L frames, R frames, G
+          frames, B frames. That is the operational view, and it is the one that
+          matters when you think about how the stack is assembled. Both tables
+          total the same number.
+        </P>
+        <P>
+          The bars in those two cards run on a single fixed scale, stated beside
+          each title, shared by both sensors and held constant for the whole run.
+          Nothing is renormalised as counts grow, so bar length is an absolute
+          count and the two cards are directly comparable. The scale is set from
+          where the largest row will finish, plus four standard deviations of
+          headroom — a row expected to land on 78 will quite ordinarily reach 84,
+          and must not silently clip.
         </P>
 
         <H>Where the numbers come from</H>
@@ -1210,6 +1248,12 @@ function Docs({ onClose }) {
         </P>
 
         <H>What every scenario converges to</H>
+        <P>
+          These are for the equal line mix. Choosing a real target changes the
+          overall column considerably — up to about 2.0× mono on an Hα-dominant
+          nebula, and over to 1.9× the OSC on a pure OIII object like Ou4 — while
+          leaving the per-line column exactly as it is.
+        </P>
         <Table
           head={["Scenario", "Overall", "Per line"]}
           body={rows.map((r) => [
